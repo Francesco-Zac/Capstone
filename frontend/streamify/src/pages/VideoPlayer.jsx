@@ -319,6 +319,19 @@ export default function VideoPlayer() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <h2 className="title">{video.title}</h2>
+                {video.description && (
+                  <p
+                    className="description"
+                    style={{
+                      margin: "8px 0",
+                      color: "#666",
+                      fontSize: "14px",
+                      lineHeight: "1.4",
+                    }}
+                  >
+                    {video.description}
+                  </p>
+                )}
                 <div className="meta-row">
                   <div>
                     {video.views ?? 0} views • {new Date(video.createdAt || "").toLocaleString()}
@@ -370,7 +383,7 @@ export default function VideoPlayer() {
 
               <div>
                 {video.ownerUsername === currentUser?.username ? (
-                  <button className="btn btn-outline-secondary" onClick={() => navigate("/")}>
+                  <button className="btn btn-outline-secondary" onClick={() => navigate("/profile")}>
                     Il mio canale
                   </button>
                 ) : (

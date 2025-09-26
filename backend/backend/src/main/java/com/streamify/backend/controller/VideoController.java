@@ -100,8 +100,13 @@ public class VideoController {
         Optional<Video> opt = videoRepository.findById(id);
         if (opt.isEmpty()) return ResponseEntity.notFound().build();
         Video v = opt.get();
-        if (v.getOwner() == null || !v.getOwner().getUsername().equals(userDetails.getUsername()))
+        User user = userRepository.findByUsername(userDetails.getUsername())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+        boolean isAdmin = user.getRoles().contains(Role.ADMIN);
+        if (!isAdmin && (v.getOwner() == null || !v.getOwner().getUsername().equals(user.getUsername()))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
         if (body.containsKey("title")) v.setTitle(body.get("title"));
         if (body.containsKey("description")) v.setDescription(body.get("description"));
         return ResponseEntity.ok(mapToDto(videoRepository.save(v)));
@@ -130,26 +135,56 @@ public class VideoController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable Long id, @AuthenticationPrincipal UserDetails userDetails) {
-        if (userDetails == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        Optional<Video> o = videoRepository.findById(id);
-        if (o.isEmpty()) return ResponseEntity.notFound().build();
-        Video v = o.get();
 
-        User user = userRepository.findByUsername(userDetails.getUsername())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
-
-
-        boolean isAdmin = user.getRoles().contains(Role.ADMIN);
-        if (!isAdmin && (v.getOwner() == null || !v.getOwner().getUsername().equals(user.getUsername()))) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        if (userDetails == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        Path p = Paths.get(v.getStoragePath());
-        videoRepository.deleteById(id);
+
+        Optional<Video> videoOptional = videoRepository.findById(id);
+        if (videoOptional.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        Video video = videoOptional.get();
+
+
+        boolean isAdmin = userDetails.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_ADMIN".equals(authority.getAuthority()) ||
+                        "ADMIN".equals(authority.getAuthority()));
+
+
+        if (!isAdmin) {
+            User currentUser = userRepository.findByUsername(userDetails.getUsername())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+
+
+            if (video.getOwner() == null || !video.getOwner().getUsername().equals(currentUser.getUsername())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+        }
+
+
+        String storagePath = video.getStoragePath();
+
+
         try {
-            Files.deleteIfExists(p);
-        } catch (Exception ignored) {
+            videoRepository.deleteById(id);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Errore durante l'eliminazione dal database: " + e.getMessage()));
         }
+
+
+        if (storagePath != null && !storagePath.isBlank()) {
+            try {
+                Path filePath = Paths.get(storagePath);
+                Files.deleteIfExists(filePath);
+            } catch (Exception e) {
+
+                System.err.println("Errore durante l'eliminazione del file: " + e.getMessage());
+            }
+        }
+
         return ResponseEntity.noContent().build();
     }
 
