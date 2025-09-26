@@ -91,7 +91,7 @@ function readCurrentUser() {
     const payload = JSON.parse(atob(t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
     return {
       username: payload.sub || payload.username || null,
-      roles: payload.roles || [], // es. ['USER','ADMIN']
+      roles: payload.roles || [],
     };
   } catch {
     return null;
@@ -110,6 +110,9 @@ export default function VideoPlayer() {
   const [subLoading, setSubLoading] = useState(false);
   const [hoverUnsub, setHoverUnsub] = useState(false);
   const currentUser = readCurrentUser();
+
+  const [newComment, setNewComment] = useState("");
+  const [postingComment, setPostingComment] = useState(false);
 
   useEffect(() => {
     API.get(`/videos/${id}`)
@@ -250,6 +253,37 @@ export default function VideoPlayer() {
     }
   };
 
+  const postComment = async (e) => {
+    e.preventDefault();
+    if (!currentUser) {
+      if (window.confirm("Devi essere loggato per commentare. Vuoi andare al login?")) {
+        navigate("/login");
+      }
+      return;
+    }
+    const text = (newComment || "").trim();
+    if (!text) return alert("Inserisci un commento");
+    setPostingComment(true);
+    try {
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await API.post(`/videos/${id}/comments`, { text }, { headers });
+      const created = res.data ?? null;
+      if (created && created.id) {
+        setComments((prev) => [created, ...prev]);
+      } else {
+        const r = await API.get(`/videos/${id}/comments?page=0&size=50`);
+        setComments(r.data?.content ?? r.data ?? []);
+      }
+      setNewComment("");
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message || "Errore invio commento";
+      alert(msg);
+    } finally {
+      setPostingComment(false);
+    }
+  };
+
   if (!video) return <div className="container mt-4">Caricamento...</div>;
 
   const subscribeButtonStyle = {
@@ -356,9 +390,32 @@ export default function VideoPlayer() {
 
             <div className="comments" style={{ marginTop: 14 }}>
               <h4>Commenti</h4>
+
+              <form onSubmit={postComment} style={{ marginBottom: 12, display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <textarea
+                  className="form-control"
+                  placeholder={currentUser ? "Scrivi un commento..." : "Devi essere loggato per commentare"}
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  rows={2}
+                  disabled={!currentUser || postingComment}
+                  style={{ resize: "vertical", flex: 1 }}
+                />
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <button className="btn btn-primary" type="submit" disabled={!currentUser || postingComment}>
+                    {postingComment ? "..." : "Invia"}
+                  </button>
+                  {!currentUser && (
+                    <button type="button" className="btn btn-outline-secondary" onClick={() => navigate("/login")} style={{ whiteSpace: "nowrap" }}>
+                      Login
+                    </button>
+                  )}
+                </div>
+              </form>
+
               {comments.length === 0 && <div className="muted">Nessun commento</div>}
               {comments.map((c) => (
-                <div className="comment" key={c.id}>
+                <div className="comment" key={c.id} style={{ marginBottom: 8 }}>
                   <div style={{ fontWeight: 700 }}>{c.authorUsername || "Anonimo"}</div>
                   <div style={{ marginLeft: 10 }}>{c.text}</div>
                 </div>
